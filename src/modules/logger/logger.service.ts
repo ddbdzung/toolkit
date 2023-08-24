@@ -1,9 +1,27 @@
 import { LoggerColor, LoggerTag, LoggerTagColor } from './logger.constant';
 
 export class LoggerService {
+  static info(content: string, ...args: any) {
+    const nodeEnv = process.env.NODE_ENV;
+    if (!nodeEnv) throw new Error('[LoggerService] NODE_ENV is undefined]');
+
+    if (nodeEnv === 'test') return;
+
+    console.log(
+      `[${this._colorizeText(
+        'INFO',
+        LoggerTagColor.INFO,
+      )}]:${this._colorizeText(
+        this._getTimestamp(),
+        LoggerTagColor.INFO,
+      )}: [${content}]`,
+      ...args,
+    );
+  }
+
   static debug(content: string, ...args: any) {
     const nodeEnv = process.env.NODE_ENV;
-    if (!nodeEnv) throw new Error('NODE_ENV is undefined');
+    if (!nodeEnv) throw new Error('[LoggerService] NODE_ENV is undefined]');
 
     if (nodeEnv === 'test') return;
 
@@ -14,14 +32,14 @@ export class LoggerService {
       )}]:${this._colorizeText(
         this._getTimestamp(),
         LoggerTagColor.DEBUG,
-      )}: ${content}`,
+      )}: [${content}]`,
       ...args,
     );
   }
 
   static error(content: string, ...args: any) {
     const nodeEnv = process.env.NODE_ENV;
-    if (!nodeEnv) throw new Error('NODE_ENV is undefined');
+    if (!nodeEnv) throw new Error('[LoggerService] NODE_ENV is undefined]');
 
     if (nodeEnv === 'test') return;
 
@@ -32,14 +50,14 @@ export class LoggerService {
       )}]:${this._colorizeText(
         this._getTimestamp(),
         LoggerTagColor.ERROR,
-      )}: ${content}`,
+      )}: [${content}]`,
       ...args,
     );
   }
 
   static log(tag: LoggerTag, content: string, ...args: any) {
     const nodeEnv = process.env.NODE_ENV;
-    if (!nodeEnv) throw new Error('NODE_ENV is undefined');
+    if (!nodeEnv) throw new Error('[LoggerService] NODE_ENV is undefined]');
 
     if (nodeEnv === 'test') return;
     if (nodeEnv === 'production' && tag === LoggerTag.DEBUG) return;
@@ -48,7 +66,7 @@ export class LoggerService {
       `[${this._colorizeText(tag, LoggerTagColor[tag])}]:${this._colorizeText(
         this._getTimestamp(),
         LoggerTagColor.DEBUG,
-      )}: ${content}`,
+      )}: [${content}]`,
       ...args,
     );
   }
