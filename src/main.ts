@@ -7,19 +7,30 @@ import { EnvironmentVariables } from './config/configuration.config';
 import {
   MongodbConfigurationBuilder,
   MongodbService,
+  MongodbUriBuilder,
 } from './modules/mongodb/mongodb.service';
 
 async function bootstrap(): Promise<0 | 1> {
   LoggerService.debug('Hello World!', EnvironmentVariables.getVariables());
-  const configurationssss = new MongodbConfigurationBuilder()
-    .setUri('mongodb://127.0.0.1:27017')
-    .setAlias('test')
+  const localDbUri = new MongodbUriBuilder()
+    .setHost('127.0.0.1')
+    .setPort(27017)
+    .build().mongodbUri;
+
+  const localDbAlias = 'LOCAL_DB';
+  const localDbConfig = new MongodbConfigurationBuilder()
+    .setUri(localDbUri)
+    .setAlias(localDbAlias)
     .build();
-  console.log('abc', MongodbService.instances);
-  const test = new MongodbService(configurationssss);
-  console.log('abc123', MongodbService.metadata);
-  await MongodbService.init(configurationssss.alias);
-  console.log('435wsergdfx', MongodbService.metadata);
+
+  console.log('localDbConfig', localDbConfig);
+  console.log('MongodbService.metadata', MongodbService.metadata);
+  MongodbService.createInstance(localDbConfig);
+  console.log('MongodbService.metadata', MongodbService.metadata);
+  await MongodbService.init(localDbAlias);
+  console.log('MongodbService.metadata', MongodbService.metadata);
+  const db = MongodbService.getInstance(localDbAlias, 'test');
+  await db.collection('test').insertOne({ test: 'test' });
 
   return 0;
 }

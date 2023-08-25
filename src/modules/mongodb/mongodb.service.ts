@@ -69,11 +69,6 @@ export class MongodbUriBuilder {
   }
 
   public setHost(host: string): MongodbUriBuilder {
-    if (host === 'localhost') {
-      this._host = host;
-      return this;
-    }
-
     if (!validIpAddressRegex.test(host) || !validHostnameRegex.test(host)) {
       throw new Error('Host must be a valid ip address or hostname');
     }
@@ -101,9 +96,8 @@ export class MongodbUriBuilder {
   ): MongodbUriBuilder {
     const specialCharacters = ['$', ':', '/', '?', '#', '[', ']', '@'];
     let formattedPassword = password;
-    if (specialCharacters.some(password.includes)) {
+    if (specialCharacters.some(char => password.includes(char))) {
       formattedPassword = encodeURIComponent(password);
-      throw new Error('Password contains special characters');
     }
 
     this._hasAccessCredentials = true;
@@ -279,7 +273,16 @@ export class MongodbService {
   private static _instances: Map<AliasConnName, MongoDb.MongoClient> =
     new Map();
   private static _metadata: Map<AliasConnName, MetadataInstance> = new Map();
-  constructor(configuration: MongodbConfiguration) {
+
+  public static get metadata() {
+    return MongodbService._metadata;
+  }
+
+  public static get instances() {
+    return MongodbService._instances;
+  }
+
+  public static createInstance(configuration: MongodbConfiguration) {
     const { uri, alias, options } = configuration;
     const client: MongoDb.MongoClient = new MongoDb.MongoClient(uri, options);
     if (
@@ -299,35 +302,34 @@ export class MongodbService {
 
     LoggerService.info(
       MongodbService.name,
-      `Database uri='${uri}', alias='${alias}' instantiate successfully`,
+      `Database uri='${uri}', alias='${alias}' instantiated successfully`,
     );
   }
 
-  public static get metadata() {
-    return MongodbService._metadata;
-  }
+  public static async init(alias: AliasConnName) {
+    if (
+      !MongodbService._instances.has(alias) ||
+      !MongodbService._metadata.has(alias)
+    ) {
+      throw new Error(
+        `alias='${alias}' not instantiated. Call createInstance() first`,
+      );
+    }
 
-  public static get instances() {
-    return MongodbService._instances;
-  }
-
-  public static async init(
-    alias: string,
-    options: MongoDb.MongoClientOptions = {},
-  ) {
     if (
       MongodbService._metadata.has(alias) &&
-      MongodbService._instances.has(alias) &&
       MongodbService._metadata.get(alias).status === StatusInstance.CONNECTED
     ) {
-      throw new Error(`${alias} already connected`);
+      throw new Error(`alias='${alias}' already connected`);
     }
 
     try {
       await MongodbService._instances.get(alias).connect();
+
       const metadataInstance = MongodbService._metadata.get(alias);
       metadataInstance.status = StatusInstance.CONNECTED;
       MongodbService._metadata.set(alias, metadataInstance);
+
       LoggerService.info(
         `${MongodbService.name}`,
         `alias='${alias}' connected successfully`,
@@ -341,15 +343,71 @@ export class MongodbService {
     }
   }
 
-  // public static getInstance(): MongodbService {
-  //   if (!instance) {
-  //     throw new Error('MongodbService not initialized. Call init() first');
-  //   }
+  public static getInstance(alias: AliasConnName): MongoDb.MongoClient;
+  public static getInstance(
+    alias: AliasConnName,
+    databaseName: string,
+  ): MongoDb.Db;
 
-  //   return instance;
-  // }
+  public static getInstance(alias: AliasConnName): MongoDb.MongoClient {
+    if (
+      !MongodbService._instances.has(alias) ||
+      !MongodbService._metadata.has(alias)
+    ) {
+      throw new Error(`alias='${alias}' not instantiated`);
+    }
 
-  // public async disconnect() {
-  //   await this._client.close();
-  // }
+    return MongodbService._instances.get(alias);
+  }
+
+  public static getInstance(
+    alias: AliasConnName,
+    databaseName: string,
+  ): MongoDb.Db {
+    if (
+      !MongodbService._instances.has(alias) ||
+      !MongodbService._metadata.has(alias)
+    ) {
+      throw new Error(`alias='${alias}' not instantiated`);
+    }
+
+    return MongodbService._instances.get(alias).db(databaseName);
+  }
+
+  public static async disconnect(alias: string) {
+    if (
+      !MongodbService._instances.has(alias) ||
+      !MongodbService._metadata.has(alias)
+    ) {
+      throw new Error(`alias='${alias}' not instantiated. Disconnect failed`);
+    }
+
+    if (
+      MongodbService._metadata.get(alias).status === StatusInstance.DISCONNECTED
+    ) {
+      throw new Error(`alias='${alias}' already disconnected`);
+    }
+
+    if (MongodbService._metadata.get(alias).status === StatusInstance.PENDING) {
+      throw new Error(`alias='${alias}' is pending. Disconnect failed`);
+    }
+
+    try {
+      await MongodbService._instances.get(alias).close();
+      const metadataInstance = MongodbService._metadata.get(alias);
+      metadataInstance.status = StatusInstance.DISCONNECTED;
+      MongodbService._metadata.set(alias, metadataInstance);
+
+      LoggerService.info(
+        `${MongodbService.name}`,
+        `alias='${alias}' disconnected successfully`,
+      );
+    } catch (err) {
+      LoggerService.error(
+        `${MongodbService.name}`,
+        `alias='${alias}' disconnected failed`,
+      );
+      throw new Error(err);
+    }
+  }
 }
