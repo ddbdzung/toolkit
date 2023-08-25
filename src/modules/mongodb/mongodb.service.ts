@@ -1,4 +1,6 @@
-import { MongoClient, MongoClientOptions } from 'mongodb';
+import * as MongoDb from 'mongodb';
+import { LoggerService } from '../logger/logger.service';
+import { ClassBuilderPattern } from './mongodb.module';
 
 const validIpAddressRegex =
   /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]).){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
@@ -10,7 +12,7 @@ const isNumeric = number => {
   return !isNaN(parseFloat(number)) && isFinite(number);
 };
 
-class MongodbUri {
+class MongodbUri extends ClassBuilderPattern {
   private _mongodbUri: string;
 
   private _buildUriNoAccessCredential(builder: MongodbUriBuilder): string {
@@ -22,6 +24,7 @@ class MongodbUri {
   }
 
   constructor(builder: MongodbUriBuilder) {
+    super();
     if (builder.hasAccessCredentials) {
       this._mongodbUri = this._buildUriWithAccessCredential(builder);
     } else {
@@ -132,10 +135,11 @@ export class MongodbUriBuilder {
   }
 }
 
-class MongodbConfig {
+class MongodbConfig extends ClassBuilderPattern {
   private _uri: string;
   private _databaseName: string;
   constructor(builder: MongodbConfigBuilder) {
+    super();
     this._uri = builder.uri;
     this._databaseName = builder.databaseName;
   }
@@ -189,35 +193,163 @@ export class MongodbConfigBuilder {
 // TODO: How to create many client connecting to many databases?
 // Using alias connection name, but how to create many alias connection name?
 // And only use an array of instances without re-creating new instance?
-let instance: MongodbService | null = null;
-class MongodbService {
+class MongodbConfiguration extends ClassBuilderPattern {
   private readonly _uri: string;
-  private readonly _databaseName: string;
-  private readonly _client: MongoClient;
-  private readonly _aliasConnName: string;
-  constructor(
-    uri: string,
-    databaseName: string,
-    options: MongoClientOptions = {},
-  ) {
-    this._uri = uri;
-    this._databaseName = databaseName;
-    this._client = new MongoClient(this._uri, options);
+  private readonly _alias: string;
+  private readonly _options: MongoDb.MongoClientOptions;
+  constructor(builder: MongodbConfigurationBuilder) {
+    super();
+    this._uri = builder.uri;
+    this._alias = builder.alias;
+    this._options = builder.options;
   }
 
-  // public init(uri) {
-  //   if (instance) {
-  //     throw new Error('MongodbService already initialized');
-  //   }
+  get uri(): string {
+    return this._uri;
+  }
+  get alias(): string {
+    return this._alias;
+  }
+  get options(): MongoDb.MongoClientOptions {
+    return this._options;
+  }
+}
 
-  //   instance = new MongodbService(uri);
-  // }
+export class MongodbConfigurationBuilder {
+  private _uri: string;
+  private _alias: string;
+  private _options: MongoDb.MongoClientOptions;
+  constructor() {
+    this._uri = '';
+    this._alias = '';
+    this._options = {};
+  }
 
-  public static getInstance(): MongodbService {
-    if (!instance) {
-      throw new Error('MongodbService not initialized. Call init() first');
+  get uri(): string {
+    return this._uri;
+  }
+  get alias(): string {
+    return this._alias;
+  }
+  get options(): MongoDb.MongoClientOptions {
+    return this._options;
+  }
+
+  public setUri(uri: string): MongodbConfigurationBuilder {
+    this._uri = uri;
+    return this;
+  }
+
+  public setAlias(alias: string): MongodbConfigurationBuilder {
+    this._alias = alias;
+    return this;
+  }
+
+  public withOptions(
+    options: MongoDb.MongoClientOptions,
+  ): MongodbConfigurationBuilder {
+    this._options = options;
+    return this;
+  }
+
+  public build(): MongodbConfiguration {
+    if (!this._uri) {
+      throw new Error('Uri required to build mongodb configuration');
     }
 
-    return instance;
+    if (!this._alias) {
+      throw new Error('Alias required to build mongodb configuration');
+    }
+
+    return new MongodbConfiguration(this);
   }
+}
+export type AliasConnName = string;
+export enum StatusInstance {
+  CONNECTED = 'connected',
+  DISCONNECTED = 'disconnected',
+  PENDING = 'pending',
+}
+export type MetadataInstance = {
+  status: StatusInstance;
+  options: MongoDb.MongoClientOptions;
+};
+
+export class MongodbService {
+  private static _instances: Map<AliasConnName, MongoDb.MongoClient> =
+    new Map();
+  private static _metadata: Map<AliasConnName, MetadataInstance> = new Map();
+  constructor(configuration: MongodbConfiguration) {
+    const { uri, alias, options } = configuration;
+    const client: MongoDb.MongoClient = new MongoDb.MongoClient(uri, options);
+    if (
+      MongodbService._instances.has(alias) ||
+      MongodbService._metadata.has(alias)
+    ) {
+      throw new Error(
+        `Database uri='${uri}', alias='${alias}' already instantiated`,
+      );
+    }
+
+    MongodbService._metadata.set(alias, {
+      options,
+      status: StatusInstance.PENDING,
+    });
+    MongodbService._instances.set(alias, client);
+
+    LoggerService.info(
+      MongodbService.name,
+      `Database uri='${uri}', alias='${alias}' instantiate successfully`,
+    );
+  }
+
+  public static get metadata() {
+    return MongodbService._metadata;
+  }
+
+  public static get instances() {
+    return MongodbService._instances;
+  }
+
+  public static async init(
+    alias: string,
+    options: MongoDb.MongoClientOptions = {},
+  ) {
+    if (
+      MongodbService._metadata.has(alias) &&
+      MongodbService._instances.has(alias) &&
+      MongodbService._metadata.get(alias).status === StatusInstance.CONNECTED
+    ) {
+      throw new Error(`${alias} already connected`);
+    }
+
+    try {
+      await MongodbService._instances.get(alias).connect();
+      const metadataInstance = MongodbService._metadata.get(alias);
+      metadataInstance.status = StatusInstance.CONNECTED;
+      MongodbService._metadata.set(alias, metadataInstance);
+      LoggerService.info(
+        `${MongodbService.name}`,
+        `alias='${alias}' connected successfully`,
+      );
+    } catch (error) {
+      LoggerService.error(
+        `${MongodbService.name}`,
+        `alias='${alias}' connected failed`,
+      );
+      throw new Error(error);
+    }
+  }
+
+  // public static getInstance(): MongodbService {
+  //   if (!instance) {
+  //     throw new Error('MongodbService not initialized. Call init() first');
+  //   }
+
+  //   return instance;
+  // }
+
+  // public async disconnect() {
+  //   await this._client.close();
+  // }
 }
