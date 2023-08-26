@@ -1,6 +1,6 @@
+process.on('unhandledRejection', console.log);
 import 'module-alias/register';
 import 'source-map-support/register';
-process.on('unhandledRejection', console.log);
 
 import { LoggerService } from './modules/logger/logger.module';
 import { EnvironmentVariables } from './config/configuration.config';
@@ -9,6 +9,7 @@ import {
   MongodbService,
   MongodbUriBuilder,
 } from './modules/mongodb/mongodb.service';
+import { ExceptionFactory } from './modules/exception-handler/exception-handler.factory';
 
 async function bootstrap(): Promise<0 | 1> {
   LoggerService.debug('Hello World!', EnvironmentVariables.getVariables());
@@ -23,14 +24,14 @@ async function bootstrap(): Promise<0 | 1> {
     .setAlias(localDbAlias)
     .build();
 
-  console.log('localDbConfig', localDbConfig);
-  console.log('MongodbService.metadata', MongodbService.metadata);
   MongodbService.createInstance(localDbConfig);
-  console.log('MongodbService.metadata', MongodbService.metadata);
   await MongodbService.init(localDbAlias);
-  console.log('MongodbService.metadata', MongodbService.metadata);
-  const db = MongodbService.getInstance(localDbAlias, 'test');
-  await db.collection('test').insertOne({ test: 'test' });
+  const localDb = MongodbService.getDatabase(localDbAlias, 'demo-f8');
+  const x = await localDb
+    .collection('courses')
+    .insertOne({ name: 'NodeJS', description: 'NodeJS is awesome!' });
+
+  LoggerService.debug('Inserted document', x);
 
   return 0;
 }
@@ -41,6 +42,6 @@ bootstrap()
     process.exit(exitCode);
   })
   .catch(err => {
-    LoggerService.error(bootstrap.name, 'Bootstrap failed', err);
+    ExceptionFactory.captureException(err, bootstrap.name);
     process.exit(1);
   });

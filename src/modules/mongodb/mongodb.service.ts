@@ -1,6 +1,7 @@
 import * as MongoDb from 'mongodb';
 import { LoggerService } from '../logger/logger.service';
-import { ClassBuilderPattern } from './mongodb.module';
+import { ClassBuilderPattern } from './mongodb.pattern';
+import { MongodbModuleException } from './mongodb.module';
 
 const validIpAddressRegex =
   /^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5]).){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$/;
@@ -70,7 +71,9 @@ export class MongodbUriBuilder {
 
   public setHost(host: string): MongodbUriBuilder {
     if (!validIpAddressRegex.test(host) || !validHostnameRegex.test(host)) {
-      throw new Error('Host must be a valid ip address or hostname');
+      throw new MongodbModuleException(
+        'Host must be a valid ip address or hostname',
+      );
     }
 
     this._host = host;
@@ -79,11 +82,11 @@ export class MongodbUriBuilder {
 
   public setPort(port: number): MongodbUriBuilder {
     if (!isNumeric(port)) {
-      throw new Error('Port must be a number');
+      throw new MongodbModuleException('Port must be a number');
     }
 
     if (port < 0 || port > 65535) {
-      throw new Error('Port must be between 0 and 65535');
+      throw new MongodbModuleException('Port must be between 0 and 65535');
     }
 
     this._port = port;
@@ -108,20 +111,24 @@ export class MongodbUriBuilder {
 
   public build(): MongodbUri {
     if (!this._host) {
-      throw new Error('Host required to build mongodb uri');
+      throw new MongodbModuleException('Host required to build mongodb uri');
     }
 
     if (!this._port) {
-      throw new Error('Port required to build mongodb uri');
+      throw new MongodbModuleException('Port required to build mongodb uri');
     }
 
     if (this._hasAccessCredentials) {
       if (!this._username) {
-        throw new Error('Username required to build mongodb uri');
+        throw new MongodbModuleException(
+          'Username required to build mongodb uri',
+        );
       }
 
       if (!this._password) {
-        throw new Error('Password required to build mongodb uri');
+        throw new MongodbModuleException(
+          'Password required to build mongodb uri',
+        );
       }
     }
 
@@ -173,20 +180,19 @@ export class MongodbConfigBuilder {
 
   public build(): MongodbConfig {
     if (!this._uri) {
-      throw new Error('Uri required to build mongodb config');
+      throw new MongodbModuleException('Uri required to build mongodb config');
     }
 
     if (!this._databaseName) {
-      throw new Error('Database name required to build mongodb config');
+      throw new MongodbModuleException(
+        'Database name required to build mongodb config',
+      );
     }
 
     return new MongodbConfig(this);
   }
 }
 
-// TODO: How to create many client connecting to many databases?
-// Using alias connection name, but how to create many alias connection name?
-// And only use an array of instances without re-creating new instance?
 class MongodbConfiguration extends ClassBuilderPattern {
   private readonly _uri: string;
   private readonly _alias: string;
@@ -248,11 +254,15 @@ export class MongodbConfigurationBuilder {
 
   public build(): MongodbConfiguration {
     if (!this._uri) {
-      throw new Error('Uri required to build mongodb configuration');
+      throw new MongodbModuleException(
+        'Uri required to build mongodb configuration',
+      );
     }
 
     if (!this._alias) {
-      throw new Error('Alias required to build mongodb configuration');
+      throw new MongodbModuleException(
+        'Alias required to build mongodb configuration',
+      );
     }
 
     return new MongodbConfiguration(this);
@@ -273,6 +283,9 @@ export class MongodbService {
   private static _instances: Map<AliasConnName, MongoDb.MongoClient> =
     new Map();
   private static _metadata: Map<AliasConnName, MetadataInstance> = new Map();
+  private static _isMongoDbClientConnected(metadata: MetadataInstance) {
+    return metadata.status === StatusInstance.CONNECTED;
+  }
 
   public static get metadata() {
     return MongodbService._metadata;
@@ -289,7 +302,7 @@ export class MongodbService {
       MongodbService._instances.has(alias) ||
       MongodbService._metadata.has(alias)
     ) {
-      throw new Error(
+      throw new MongodbModuleException(
         `Database uri='${uri}', alias='${alias}' already instantiated`,
       );
     }
@@ -311,7 +324,7 @@ export class MongodbService {
       !MongodbService._instances.has(alias) ||
       !MongodbService._metadata.has(alias)
     ) {
-      throw new Error(
+      throw new MongodbModuleException(
         `alias='${alias}' not instantiated. Call createInstance() first`,
       );
     }
@@ -320,7 +333,7 @@ export class MongodbService {
       MongodbService._metadata.has(alias) &&
       MongodbService._metadata.get(alias).status === StatusInstance.CONNECTED
     ) {
-      throw new Error(`alias='${alias}' already connected`);
+      throw new MongodbModuleException(`alias='${alias}' already connected`);
     }
 
     try {
@@ -339,39 +352,32 @@ export class MongodbService {
         `${MongodbService.name}`,
         `alias='${alias}' connected failed`,
       );
-      throw new Error(error);
+      throw new MongodbModuleException(error);
     }
   }
 
-  public static getInstance(alias: AliasConnName): MongoDb.MongoClient;
-  public static getInstance(
-    alias: AliasConnName,
-    databaseName: string,
-  ): MongoDb.Db;
-
-  public static getInstance(alias: AliasConnName): MongoDb.MongoClient {
+  public static getInstance(alias: AliasConnName) {
     if (
       !MongodbService._instances.has(alias) ||
       !MongodbService._metadata.has(alias)
     ) {
-      throw new Error(`alias='${alias}' not instantiated`);
+      throw new MongodbModuleException(`alias='${alias}' not instantiated`);
     }
 
-    return MongodbService._instances.get(alias);
+    return {
+      client: MongodbService._instances.get(alias),
+      metadata: MongodbService._metadata.get(alias),
+    };
   }
 
-  public static getInstance(
-    alias: AliasConnName,
-    databaseName: string,
-  ): MongoDb.Db {
-    if (
-      !MongodbService._instances.has(alias) ||
-      !MongodbService._metadata.has(alias)
-    ) {
-      throw new Error(`alias='${alias}' not instantiated`);
+  public static getDatabase(alias: AliasConnName, dbName: string) {
+    const { client, metadata } = MongodbService.getInstance(alias);
+
+    if (!MongodbService._isMongoDbClientConnected(metadata)) {
+      throw new MongodbModuleException(`alias='${alias}' is not connected`);
     }
 
-    return MongodbService._instances.get(alias).db(databaseName);
+    return client.db(dbName);
   }
 
   public static async disconnect(alias: string) {
@@ -379,24 +385,26 @@ export class MongodbService {
       !MongodbService._instances.has(alias) ||
       !MongodbService._metadata.has(alias)
     ) {
-      throw new Error(`alias='${alias}' not instantiated. Disconnect failed`);
+      throw new MongodbModuleException(
+        `alias='${alias}' not instantiated. Disconnect failed`,
+      );
     }
 
-    if (
-      MongodbService._metadata.get(alias).status === StatusInstance.DISCONNECTED
-    ) {
-      throw new Error(`alias='${alias}' already disconnected`);
+    const metadata = MongodbService._metadata.get(alias);
+    if (metadata.status === StatusInstance.DISCONNECTED) {
+      throw new MongodbModuleException(`alias='${alias}' already disconnected`);
     }
 
-    if (MongodbService._metadata.get(alias).status === StatusInstance.PENDING) {
-      throw new Error(`alias='${alias}' is pending. Disconnect failed`);
+    if (metadata.status === StatusInstance.PENDING) {
+      throw new MongodbModuleException(
+        `alias='${alias}' is pending. Disconnect failed`,
+      );
     }
 
     try {
       await MongodbService._instances.get(alias).close();
-      const metadataInstance = MongodbService._metadata.get(alias);
-      metadataInstance.status = StatusInstance.DISCONNECTED;
-      MongodbService._metadata.set(alias, metadataInstance);
+      metadata.status = StatusInstance.DISCONNECTED;
+      MongodbService._metadata.set(alias, metadata);
 
       LoggerService.info(
         `${MongodbService.name}`,
@@ -407,7 +415,7 @@ export class MongodbService {
         `${MongodbService.name}`,
         `alias='${alias}' disconnected failed`,
       );
-      throw new Error(err);
+      throw new MongodbModuleException(err);
     }
   }
 }

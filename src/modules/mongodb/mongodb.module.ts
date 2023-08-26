@@ -1,11 +1,18 @@
-export class ClassBuilderPattern {
-  /**
-   * @returns {Object} Plain object of class instance properties
-   */
-  public toPlainObject() {
-    return Object.getOwnPropertyNames(this).reduce((obj, key) => {
-      obj[key] = this[key];
-      return obj;
-    }, {});
+let instance: MongodbModule | null = null;
+
+export class MongodbModule {
+  static getInstance(): MongodbModule {
+    if (!instance) {
+      instance = new MongodbModule();
+    }
+
+    return instance;
+  }
+}
+
+export class MongodbModuleException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MongodbModuleException';
   }
 }
