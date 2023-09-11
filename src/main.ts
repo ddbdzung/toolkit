@@ -10,6 +10,8 @@ import {
   MongodbUriBuilder,
 } from './modules/mongodb/mongodb.service';
 import { ExceptionFactory } from './modules/exception-handler/exception-handler.factory';
+import { ElasticsearchService } from './modules/elasticsearch/elasticsearch.service';
+import { elasticsearchBuilderCollection } from './modules/elasticsearch/elasticsearch.builder';
 
 async function bootstrap(): Promise<0 | 1> {
   LoggerService.debug('Hello World!', EnvironmentVariables.getVariables());
@@ -30,8 +32,19 @@ async function bootstrap(): Promise<0 | 1> {
   const x = await localDb
     .collection('courses')
     .insertOne({ name: 'NodeJS', description: 'NodeJS is awesome!' });
-
   LoggerService.debug('Inserted document', x);
+
+  const UriBuilder = elasticsearchBuilderCollection.ClientUriBuilder;
+  const devElasticsearchAlias = 'devElasticsearchURI';
+  const devElasticsearchURI = new UriBuilder()
+    .setProtocol('http')
+    .setHost('127.0.0.1')
+    .setPort(9200)
+    .build().uri;
+
+  await ElasticsearchService.initV7(devElasticsearchURI, devElasticsearchAlias);
+  const data = await ElasticsearchService.getAllIndices(devElasticsearchAlias);
+  console.log(data);
 
   return 0;
 }
