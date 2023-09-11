@@ -9,7 +9,7 @@ import {
 } from 'elasticsearch-v7';
 
 import { LoggerService } from '../logger/logger.service';
-import { handleAxiosError } from './elasticsearch.util';
+import { handleAxiosError } from './elasticsearch.helper';
 import { ElasticsearchException } from './elasticsearch.module';
 import { IElasticsearchAPI } from './elasticsearch.interface';
 import { ClientStatus, ElasticsearchClientVersion } from './elasticsearch.enum';
