@@ -4,47 +4,31 @@ import 'source-map-support/register';
 
 import { LoggerService } from './modules/logger/logger.module';
 import { EnvironmentVariables } from './config/configuration.config';
-import {
-  MongodbConfigurationBuilder,
-  MongodbService,
-  MongodbUriBuilder,
-} from './modules/mongodb/mongodb.service';
 import { ExceptionFactory } from './modules/exception-handler/exception-handler.factory';
-import { ElasticsearchService } from './modules/elasticsearch/elasticsearch.service';
-import { elasticsearchBuilderCollection } from './modules/elasticsearch/elasticsearch.builder';
+
+import { MongodbConfigurationBuilder } from './modules/mongodb/mongodb-configuration.builder';
+import { MongodbServiceFactory } from './modules/mongodb';
 
 async function bootstrap(): Promise<0 | 1> {
   LoggerService.debug('Hello World!', EnvironmentVariables.getVariables());
-  const localDbUri = new MongodbUriBuilder()
+  const mongoV3 = MongodbServiceFactory.getService(3);
+
+  const LOCAL_DB = 'local-db';
+  const localConfigurationDb = new MongodbConfigurationBuilder()
     .setHost('127.0.0.1')
     .setPort(27017)
-    .build().mongodbUri;
-
-  const localDbAlias = 'LOCAL_DB';
-  const localDbConfig = new MongodbConfigurationBuilder()
-    .setUri(localDbUri)
-    .setAlias(localDbAlias)
+    .setAlias(LOCAL_DB)
     .build();
 
-  MongodbService.createInstance(localDbConfig);
-  await MongodbService.init(localDbAlias);
-  const localDb = MongodbService.getDatabase(localDbAlias, 'demo-f8');
+  mongoV3.createClient(localConfigurationDb);
+
+  await mongoV3.connect(LOCAL_DB);
+  console.log('xyz', mongoV3.getMetadata(LOCAL_DB));
+  const localDb = mongoV3.getDatabase(LOCAL_DB, 'demo-f8');
   const x = await localDb
     .collection('courses')
-    .insertOne({ name: 'NodeJS', description: 'NodeJS is awesome!' });
+    .insertOne({ name: 'NodeJS', description: 'ReactJS is awesome!' });
   LoggerService.debug('Inserted document', x);
-
-  const UriBuilder = elasticsearchBuilderCollection.ClientUriBuilder;
-  const devElasticsearchAlias = 'devElasticsearchURI';
-  const devElasticsearchURI = new UriBuilder()
-    .setProtocol('http')
-    .setHost('127.0.0.1')
-    .setPort(9200)
-    .build().uri;
-
-  await ElasticsearchService.initV7(devElasticsearchURI, devElasticsearchAlias);
-  const data = await ElasticsearchService.getAllIndices(devElasticsearchAlias);
-  console.log(data);
 
   return 0;
 }

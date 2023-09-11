@@ -1,4 +1,4 @@
-export class ClassBuilderPattern {
+export class ObjectiveClass {
   /**
    * @returns {Object} Plain object of class instance properties
    */
