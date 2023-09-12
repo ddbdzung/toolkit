@@ -1,46 +1,29 @@
-import { MongoClient } from 'mongodb-v3';
+import { MongoClient } from 'mongodb-v5';
 
-import { IMongodbService } from '../interfaces/IMongodbService';
-import { IMetadataInstance } from './../interfaces/IMetadataInstance';
-import { MongodbConfiguration } from '../mongodb-configuration.builder';
+import { MongodbDriverVersion, StatusClient } from './mongodb.enum';
+import AbstractMongodbService from './mongodb-service.abstraction';
 import { MongodbModuleException } from '../mongodb.exception';
-import { MongodbDriverVersion } from './version.enum';
+import { MongodbConfiguration } from '../mongodb-configuration.builder';
 
 type AliasClientName = string;
 
-enum StatusClient {
-  CONNECTED = 'connected',
-  DISCONNECTED = 'disconnected',
-  PENDING = 'pending',
-}
-
-export default class MongodbServiceV3 implements IMongodbService {
-  private _clients: Map<AliasClientName, MongoClient>;
-  private _metadata: Map<AliasClientName, IMetadataInstance>;
-  private static instance: MongodbServiceV3 = null;
-  static driverVersion = MongodbDriverVersion.V3;
-
-  get clients(): Map<AliasClientName, MongoClient> {
-    return this._clients;
-  }
-
-  get metadata(): Map<AliasClientName, IMetadataInstance> {
-    return this._metadata;
-  }
+export default class MongodbServiceV5 extends AbstractMongodbService<MongoClient> {
+  private static instance: MongodbServiceV5 = null;
+  readonly driverVersion: MongodbDriverVersion;
 
   private constructor() {
-    this._clients = new Map();
-    this._metadata = new Map();
+    super();
+    this.driverVersion = MongodbDriverVersion.V5;
   }
 
-  static getInstance(): MongodbServiceV3 {
-    if (MongodbServiceV3.instance === null) {
-      MongodbServiceV3.instance = new MongodbServiceV3();
+  static getInstance(): MongodbServiceV5 {
+    if (MongodbServiceV5.instance === null) {
+      MongodbServiceV5.instance = new MongodbServiceV5();
     }
-    return MongodbServiceV3.instance;
+    return MongodbServiceV5.instance;
   }
 
-  createClient(configuration: MongodbConfiguration) {
+  createClient(configuration: MongodbConfiguration): void {
     if (
       this._clients.has(configuration.alias) ||
       this._metadata.has(configuration.alias)
@@ -55,30 +38,14 @@ export default class MongodbServiceV3 implements IMongodbService {
       new MongoClient(configuration.uri, configuration.options),
     );
     this._metadata.set(configuration.alias, {
-      version: MongodbServiceV3.driverVersion,
+      version: this.driverVersion,
       uri: configuration.uri,
       options: configuration.options,
       status: StatusClient.PENDING,
     });
   }
 
-  getClient(alias: string): MongoClient {
-    if (!this._clients.has(alias) || !this._metadata.has(alias)) {
-      throw new MongodbModuleException(`alias='${alias}' not instantiated`);
-    }
-
-    return this._clients.get(alias);
-  }
-
-  getMetadata(alias: string): IMetadataInstance {
-    if (!this._metadata.has(alias)) {
-      throw new MongodbModuleException(`alias='${alias}' not instantiated`);
-    }
-
-    return this._metadata.get(alias);
-  }
-
-  async connect(alias: string) {
+  async connect(alias: AliasClientName) {
     const metadata = this._metadata.get(alias);
     const client = this._clients.get(alias);
     if (!metadata || !client) {
@@ -91,15 +58,15 @@ export default class MongodbServiceV3 implements IMongodbService {
 
     try {
       await client.connect();
+
+      metadata.status = StatusClient.CONNECTED;
+      this._metadata.set(alias, metadata);
     } catch (error) {
       throw new MongodbModuleException(error);
     }
-
-    metadata.status = StatusClient.CONNECTED;
-    this._metadata.set(alias, metadata);
   }
 
-  async disconnect(alias: string) {
+  async disconnect(alias: AliasClientName) {
     const metadata = this._metadata.get(alias);
     const client = this._clients.get(alias);
     if (!metadata || !client) {
@@ -112,15 +79,15 @@ export default class MongodbServiceV3 implements IMongodbService {
 
     try {
       await client.close();
+
+      metadata.status = StatusClient.DISCONNECTED;
+      this._metadata.set(alias, metadata);
     } catch (error) {
       throw new MongodbModuleException(error);
     }
-
-    metadata.status = StatusClient.DISCONNECTED;
-    this._metadata.set(alias, metadata);
   }
 
-  getDatabase(alias: string, databaseName: string) {
+  getDatabase(alias: AliasClientName, databaseName: string) {
     const metadata = this._metadata.get(alias);
     const client = this._clients.get(alias);
     if (!metadata || !client) {

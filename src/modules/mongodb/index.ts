@@ -1,6 +1,11 @@
-import MongodbServiceFactory from './services';
-import { MongodbDriverVersion } from './services/version.enum';
-import { IMongodbService } from './interfaces/IMongodbService';
+import {
+  MongodbServiceFactory,
+  MongodbServiceV3,
+  MongodbServiceV4,
+  MongodbServiceV5,
+  MongodbServiceV6,
+} from './services';
+import { MongodbDriverVersion } from './services/mongodb.enum';
 import {
   MongodbConfiguration,
   MongodbConfigurationBuilder,
@@ -12,6 +17,9 @@ export {
   MongodbConfigurationBuilder,
   MongodbDriverVersion,
   IMongodbMetadataInstace,
-  IMongodbService,
   MongodbServiceFactory,
+  MongodbServiceV3,
+  MongodbServiceV4,
+  MongodbServiceV5,
+  MongodbServiceV6,
 };
